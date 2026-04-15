@@ -1,0 +1,169 @@
+ <!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>INSTANTOWN BETA</title>
+    <style>
+        :root {
+            --primary-blue: #007AFF; --safe-green: #34C759; --locked-gold: #FFCC00;
+            --bg-dark: #000000; --card-bg: #1C1C1E; --text-main: #FFFFFF; --text-dim: #8E8E93;
+        }
+
+        body {
+            margin: 0; padding: 0; font-family: -apple-system, sans-serif;
+            background-color: var(--bg-dark); color: var(--text-main);
+            height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+        }
+
+        /* LOGO UNIFICATO - VERSIONE 100% VISIBILE */
+        header {
+            padding: 20px; text-align: center; background: #000; border-bottom: 1px solid #333;
+        }
+
+        .logo-box {
+            display: inline-flex; align-items: center; font-weight: 900; font-size: 1.8rem;
+        }
+
+        /* LA I CON GRADIENTE TRICOLORE FORZATO */
+        .i-tricolore {
+            background: linear-gradient(to right, #009246 33%, #ffffff 33%, #ffffff 66%, #ce2b37 66%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-size: 2.2rem;
+            margin-right: 3px;
+        }
+
+        /* LA T CON BARRA ORO SUPERIORE */
+        .t-oro {
+            color: var(--locked-gold);
+            border-top: 4px solid var(--locked-gold);
+            line-height: 0.8;
+            margin-top: 5px;
+        }
+
+        /* ELEMENTI UI */
+        #status-area { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+        .radar-circle {
+            width: 200px; height: 200px; border: 2px solid var(--primary-blue); border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; margin-bottom: 25px;
+            transition: 0.5s; background: rgba(0, 122, 255, 0.05);
+        }
+        .distance-display { font-size: 3.5rem; font-weight: bold; }
+        .info-card { background: var(--card-bg); width: 90%; max-width: 400px; border-radius: 24px; padding: 25px; border: 1px solid #38383a; text-align: center; }
+        .badge { display: inline-block; padding: 8px 16px; border-radius: 12px; font-size: 12px; font-weight: bold; margin-bottom: 15px; background: #333; }
+        .active-escrow { background: var(--locked-gold); color: #000; }
+        .released { background: var(--safe-green); color: #000; }
+        
+        button { width: 100%; padding: 15px; border-radius: 14px; border: none; font-weight: bold; margin-top: 10px; cursor: pointer; }
+        #log-btn { background: var(--primary-blue); color: white; display: none; }
+        #qr-btn { background: transparent; border: 1px solid var(--text-dim); color: var(--text-dim); display: none; }
+        #reset-btn { background: rgba(255,255,255,0.05); color: #666; font-size: 0.8rem; margin-top: 15px; border: 1px dashed #444; }
+        #debug { font-size: 10px; color: #555; margin-top: 15px; font-family: monospace; }
+        footer { padding: 15px; text-align: center; font-size: 0.8rem; color: #444; letter-spacing: 1px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-box">
+            <span class="i-tricolore">I</span>NSTAN<span class="t-oro">T</span>OWN
+        </div>
+    </header>
+
+    <div id="status-area">
+        <div class="radar-circle" id="radar">
+            <div class="distance-display"><span id="dist-val">--</span>m</div>
+        </div>
+
+        <div class="info-card">
+            <div id="status-badge" class="badge">RICERCA GPS...</div>
+            <div id="instruction">Attiva il GPS per iniziare il test.</div>
+            
+            <button id="qr-btn" onclick="forzaSbloccoQR()">SBLOCCA CON QR CODE</button>
+            <button id="log-btn" onclick="inviaReport()">INVIA REPORT WHATSAPP</button>
+            <button id="reset-btn" onclick="resetGPS()">🔄 RESET GPS / RICALIBRA</button>
+            
+            <div id="debug">Segnale in corso...</div>
+        </div>
+    </div>
+
+    <footer>TUTTI HANNO UN'OPPORTUNITÀ</footer>
+
+    <script>
+        // CONFIGURAZIONE
+        const esercenteCoord = { lat: 41.94461, lng: 12.55422 }; 
+        const WA_NUMBER = "393284613506"; // <--- METTI IL TUO NUMERO REALE
+
+        let watchId = null;
+        const distEl = document.getElementById('dist-val');
+        const badge = document.getElementById('status-badge');
+        const instruction = document.getElementById('instruction');
+        const radar = document.getElementById('radar');
+        const logBtn = document.getElementById('log-btn');
+        const qrBtn = document.getElementById('qr-btn');
+        const debugEl = document.getElementById('debug');
+
+        function startTracking() {
+            if (!navigator.geolocation) return;
+            watchId = navigator.geolocation.watchPosition(success, error, { enableHighAccuracy: true });
+        }
+
+        function success(pos) {
+            const tLat = pos.coords.latitude;
+            const tLng = pos.coords.longitude;
+            const d = calcolaDistanza(tLat, tLng, esercenteCoord.lat, esercenteCoord.lng);
+            updateUI(d, tLat, tLng, pos.coords.accuracy);
+        }
+
+        function error(err) { debugEl.innerHTML = "ERRORE GPS: " + err.message; }
+
+        function resetGPS() {
+            if (watchId) navigator.geolocation.clearWatch(watchId);
+            distEl.innerText = "--";
+            setTimeout(startTracking, 500);
+        }
+
+        function calcolaDistanza(lat1, lon1, lat2, lon2) {
+            const R = 6371000;
+            const p1 = lat1 * Math.PI/180; const p2 = lat2 * Math.PI/180;
+            const dp = (lat2-lat1) * Math.PI/180; const dl = (lon2-lon1) * Math.PI/180;
+            const a = Math.sin(dp/2)**2 + Math.cos(p1)*Math.cos(p2) * Math.sin(dl/2)**2;
+            return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        function updateUI(d, lat, lon, acc) {
+            const dist = Math.round(d);
+            distEl.innerText = dist;
+            debugEl.innerHTML = `Acc: ±${Math.round(acc)}m | ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+
+            if (d <= 15) {
+                badge.className = "badge released"; badge.innerText = "PAGAMENTO RILASCIATO";
+                radar.style.borderColor = "var(--safe-green)";
+                logBtn.style.display = "block"; qrBtn.style.display = "none";
+            } else if (d <= 200) {
+                badge.className = "badge active-escrow"; badge.innerText = "FONDI BLOCCATI";
+                radar.style.borderColor = "var(--locked-gold)";
+                qrBtn.style.display = "block"; logBtn.style.display = "none";
+            } else {
+                badge.className = "badge"; badge.innerText = "FUORI RAGGIO";
+                radar.style.borderColor = "var(--primary-blue)";
+                qrBtn.style.display = "none"; logBtn.style.display = "none";
+            }
+        }
+
+        function forzaSbloccoQR() {
+            badge.className = "badge released"; badge.innerText = "SBLOCCATO VIA QR";
+            logBtn.style.display = "block";
+        }
+
+        function inviaReport() {
+            const report = `*INSTANTOWN REPORT*%0ADistanza: ${distEl.innerText}m%0AStatus: ${badge.innerText}`;
+            window.open(`https://wa.me/${WA_NUMBER}?text=${report}`, '_blank');
+        }
+
+        startTracking();
+    </script>
+</body>
+</html>
